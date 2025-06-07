@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>IP Geolocator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Roboto', sans-serif;
+      background: #1c1b24;
+    }
+      h1{
+        margin:0;
+        padding:0;
+        color: white;
+      }
+    #map {
+      position: relative;
+      max-width:  1440px;
+      width:  100%;
+      height: 90vh;
+      overflow: hidden;
+      margin: 25px auto;
+      border-radius: 5px;
+      box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
+
+    }
+
+    #svgmap {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .controls input {
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+    }
+
+    .controls button {
+      background: #8a6eff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin-left: 5px;
+      cursor: pointer;
+    }
+
+    .controls p {
+      color: white;
+      font-size: 12px;
+      margin-top: 10px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .tooltip {
+      position: absolute;
+      max-width: 200px;
+      padding: 10px 20px;
+      font-size: 12px;
+      background: #1c1b24;
+      color: white;
+      pointer-events: none;
+      z-index: 15;
+      text-transform: uppercase;
+      border-radius: 5px;
+      box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
+      font-size:  10px;
+      line-height: .5em;
+    }
+    .tooltip span{
+      color: rgba(255,255,255,0.6);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="map">
+    <svg id="svgmap" viewBox="0 0 960 500" preserveAspectRatio="xMidYMid"></svg>
+
+    <div class="controls">
+      <h1>IP Address Locator</h1>
+      <input type="text" id="addr" placeholder="Enter IP or Decimal..." />
+      <button id="submitButton"><i class="fa fa-arrow-right"></i></button>
+      <p>Search an IP (e.g., 8.8.8.8 or 134744072)</p>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+  <script src="https://d3js.org/d3.v3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/TweenMax.min.js"></script>
+
+  <script>
+    window.onload = function () {
+      document.getElementById("addr").focus();
+    };
+
+    var w = document.getElementById('map').getBoundingClientRect().width;
+    var h = document.getElementById('map').getBoundingClientRect().height;
+
+    /*var projection = d3.geo.mercator()
+      .center([-98.5795, 39.8283])
+      .translate([w / 2, h / 2])
+      .scale(1000);*/
+
+    var projection = d3.geo.mercator()
+    .scale((w / 2 / Math.PI)) // auto-fit horizontally
+    .translate([w / 2, h / 2]);
+
+    var path = d3.geo.path().projection(projection);
+    var zoom = d3.behavior.zoom().scaleExtent([1, 8]).on("zoom", zoomed);
+
+    var svg = d3.select("#svgmap")
+      .attr({ width: w, height: h })
+      .append("g")
+      .call(zoom)
+      .append("g");
+
+    var div = d3.select("body")
+      .append("div")
+      .attr("class", "tooltip")
+      .style("opacity", 0);
+
+    let geoPaths;
+
+    d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson", function (error, mapData) {
+      if (error) throw error;
+
+      geoPaths = svg.selectAll("path")
+        .data(mapData.features)
+        .enter()
+        .append("path");
+
+      geoPaths.attr("d", path)
+        .attr("id", (d, i) => `path${i}`)
+        .style("fill", "#292733")
+        .style("stroke", "rgba(0,0,0,0.25)");
+    });
+
+    function ipConverter(input) {
+      return typeof input === 'number' ?
+        ((input >>> 24) + '.' + (input >> 16 & 255) + '.' + (input >> 8 & 255) + '.' + (input & 255)) :
+        typeof input === 'string' ?
+          input.split('.').reduce(function (ipInt, octet) { return (ipInt << 8) + parseInt(octet, 10) }, 0) >>> 0 :
+          (() => { throw new Error("Input must be either a string representing an IP address or an integer."); })();
+    }
+
+    async function getLocationByIpOrInt(ipAddress) {
+      try {
+        const decimalIp = typeof ipAddress == "string" ? ipAddress : ipConverter(ipAddress);
+        const response = await fetch(`https://ipinfo.io/${decimalIp}/json`);
+        return await response.json();
+      } catch (error) {
+        console.error('Error fetching location:', error);
+        return null;
+      }
+    }
+
+    document.getElementById('submitButton').addEventListener('click', function () {
+      const inputValue = document.getElementById('addr').value;
+
+      getLocationByIpOrInt(ipConverter(inputValue))
+        .then(locationData => {
+          if (!locationData || !locationData.loc) return;
+
+          const [lat, lon] = locationData.loc.split(",").map(parseFloat);
+
+          svg.selectAll("circle").remove();
+
+          const circle = svg.append("circle")
+            .attr("r", 5)
+            .attr("fill", "#6a48f6")
+            .attr("fill-opacity", 1)
+            .attr("cx", projection([lon, lat])[0])
+            .attr("cy", projection([lon, lat])[1])
+            .attr("data-lat", lat)
+            .attr("data-lng", lon)
+            .attr("data-city", locationData.city)
+            .attr("data-region", locationData.region)
+            .attr("data-country", locationData.country)
+            .attr("data-postal", locationData.postal);
+
+          circle.on("mouseover", function () {
+            div.transition().duration(200).style("opacity", 1);
+            div.html(`
+              <p>Latitude: <span>${lat}</span></p><br><br><hr>
+              <p>Longitude: <span>${lon}</span></p><br><br><hr>
+              <p>City: <span>${locationData.city}</span></p><br><br><hr>
+              <p>Region: <span>${locationData.region}</span></p><br><br><hr>
+              <p>Country: <span>${locationData.country}</span></p><br><br><hr>
+              <p>Zip/Postal: <span>${locationData.postal}</span></p>
+            `)
+              .style("left", (d3.event.pageX + 15) + "px")
+              .style("top", (d3.event.pageY - 30) + "px");
+          }).on("mouseout", function () {
+            div.transition().duration(500).style("opacity", 0);
+          });
+
+          new TimelineMax().fromTo(circle, 0.75,
+            { attr: { r: 5, fillOpacity: 1, stroke: "#e7fffd" } },
+            { attr: { r: 10 }, ease: Power2.easeOut, repeat: -1, yoyo: true }
+          );
+
+          const currentCenter = projection.center();
+          const targetCenter = [lon, lat];
+
+          d3.transition()
+            .duration(1000)
+            .tween("center", function () {
+              const interpolate = d3.interpolate(currentCenter, targetCenter);
+              return function (t) {
+                projection.center(interpolate(t));
+                svg.selectAll("path").attr("d", path);
+                svg.selectAll("circle")
+                  .attr("cx", projection([lon, lat])[0])
+                  .attr("cy", projection([lon, lat])[1]);
+              };
+            });
+
+          document.getElementById('addr').value = "";
+        });
+    });
+
+    function zoomed() {
+      svg.attr("transform",
+        "translate(" + zoom.translate() + ")" +
+        "scale(" + zoom.scale() + ")"
+      );
+      d3.selectAll("circle").transition()
+        .attr("r", (d) => d <= 0 ? 1 : d * .00005 / zoom.scale());
+    }
+  </script>
+</body>
+</html>
