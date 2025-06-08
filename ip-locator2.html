@@ -84,7 +84,7 @@
       border-radius: 5px;
       box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
       font-size:  10px;
-      line-height: .5em;
+      line-height: 1em;
     }
     .tooltip span{
       color: rgba(255,255,255,0.6);
@@ -115,11 +115,11 @@
 
     var w = document.getElementById('map').getBoundingClientRect().width;
     var h = document.getElementById('map').getBoundingClientRect().height;
-
-    /*var projection = d3.geo.mercator()
-      .center([-98.5795, 39.8283])
+/*
+    var projection = d3.geo.mercator()
+      .center([-45.5795, 5.8283])
       .translate([w / 2, h / 2])
-      .scale(1000);*/
+      .scale(500);*/
 
     var projection = d3.geo.mercator()
     .scale((w / 2 / Math.PI)) // auto-fit horizontally
@@ -182,6 +182,10 @@
           if (!locationData || !locationData.loc) return;
 
           const [lat, lon] = locationData.loc.split(",").map(parseFloat);
+          
+          console.log( locationData );
+          console.log( locationData.loc.split(",").map(parseFloat)[0] );
+          console.log( locationData.loc.split(",").map(parseFloat)[1] );
 
           svg.selectAll("circle").remove();
 
@@ -201,11 +205,12 @@
           circle.on("mouseover", function () {
             div.transition().duration(200).style("opacity", 1);
             div.html(`
-              <p>Latitude: <span>${lat}</span></p><br><br><hr>
-              <p>Longitude: <span>${lon}</span></p><br><br><hr>
-              <p>City: <span>${locationData.city}</span></p><br><br><hr>
-              <p>Region: <span>${locationData.region}</span></p><br><br><hr>
-              <p>Country: <span>${locationData.country}</span></p><br><br><hr>
+              <p>IP: <span>${inputValue}</span></p><hr>
+              <p>Latitude: <span>${lat}</span></p>
+              <p>Longitude: <span>${lon}</span></p>
+              <p>City: <span>${locationData.city}</span></p>
+              <p>Region: <span>${locationData.region}</span></p>
+              <p>Country: <span>${locationData.country}</span></p>
               <p>Zip/Postal: <span>${locationData.postal}</span></p>
             `)
               .style("left", (d3.event.pageX + 15) + "px")
